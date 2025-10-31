@@ -32,12 +32,11 @@ def search_cc():
 
 def dl(vid):
     url = f"https://www.youtube.com/watch?v={vid}"
-    # anti-bot simple
     subprocess.run([
-        "yt-dlp",
-        "--referer", "https://www.youtube.com",
-        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "-f", "best[height<=720]", "-o", "cc.mp4", url
+        "youtube-dl",
+        "-f", "best[height<=720]",
+        "-o", "cc.mp4",
+        url
     ], check=True)
 
 def transcribe():
@@ -93,3 +92,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
