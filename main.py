@@ -1,4 +1,3 @@
-```python
 import os, datetime, subprocess, whisper, moviepy.editor as mp
 from PIL import Image, ImageDraw, ImageFont
 import edge_tts, asyncio
