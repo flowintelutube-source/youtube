@@ -1,3 +1,4 @@
+```python
 import os, datetime, subprocess, whisper, moviepy.editor as mp
 from PIL import Image, ImageDraw, ImageFont
 import edge_tts, asyncio
@@ -32,7 +33,13 @@ def search_cc():
 
 def dl(vid):
     url = f"https://www.youtube.com/watch?v={vid}"
-    subprocess.run(["yt-dlp", "-f", "best[height<=720]", "-o", "cc.mp4", url], check=True)
+    # anti-bot simple
+    subprocess.run([
+        "yt-dlp",
+        "--referer", "https://www.youtube.com",
+        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "-f", "best[height<=720]", "-o", "cc.mp4", url
+    ], check=True)
 
 def transcribe():
     model = whisper.load_model("base")
@@ -87,3 +94,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
