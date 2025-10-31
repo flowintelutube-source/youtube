@@ -1,0 +1,5 @@
+google-api-python-client==2.88
+moviepy==1.0.3
+openai-whisper
+edge-tts
+Pillow
