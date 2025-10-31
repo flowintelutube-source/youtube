@@ -1,0 +1,17 @@
+name: Daily CC Short
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with: {python-version: '3.11'}
+      - run: sudo apt update && sudo apt install -y ffmpeg yt-dlp
+      - run: pip install -r requirements.txt
+      - run: python main.py
+        env:
+          YOUTUBE_API_KEY: ${{AIzaSyDFXa-qdv-mUEEMN_KdurJqRiuHcmsWZFQ}}
