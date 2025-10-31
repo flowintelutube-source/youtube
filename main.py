@@ -33,10 +33,10 @@ def search_cc():
 def dl(vid):
     url = f"https://www.youtube.com/watch?v={vid}"
     subprocess.run([
-        "youtube-dl",
-        "-f", "best[height<=720]",
-        "-o", "cc.mp4",
-        url
+        "yt-dlp",
+        "--quiet", "--no-warnings",
+        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+        "-f", "best[height<=720]", "-o", "cc.mp4", url
     ], check=True)
 
 def transcribe():
