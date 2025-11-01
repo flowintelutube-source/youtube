@@ -9,9 +9,7 @@ import requests, random
 API_KEY = os.getenv("YOUTUBE_API_KEY")
 youtube = build("youtube", "v3", developerKey=API_KEY)
 
-# SOURCE SAFE : Archive.org Creative Commons vidéos
 def search_cc():
-    # 50 films publics / CC récents sur Archive.org
     base = "https://archive.org/advancedsearch.php"
     params = {
         "q": "creativecommons AND (crime OR story OR survival) AND mediatype:movies",
@@ -25,8 +23,12 @@ def search_cc():
     return "https://archive.org/download/" + pick["identifier"] + "/" + pick["identifier"] + "_512kb.mp4"
 
 def dl(url):
-    # téléchargement direct (no bot-check)
-    subprocess.run(["wget", "-q", "-O", "cc.mp4", url], check=True)
+    r = requests.get(url.strip(), stream=True, headers={"Referer": "https://archive.org"})
+    r.raise_for_status()
+    with open("cc.mp4", "wb") as f:
+        for chunk in r.iter_content(chunk_size=1024 * 1024):
+            if chunk:
+                f.write(chunk)
 
 def transcribe():
     model = whisper.load_model("base")
@@ -38,8 +40,10 @@ def transcribe():
 def thumb():
     img = Image.new("RGB", (1280, 720), "black")
     d = ImageDraw.Draw(img)
-    try: font = ImageFont.truetype("arial.ttf", 120)
-    except: font = ImageFont.load_default()
+    try:
+        font = ImageFont.truetype("arial.ttf", 120)
+    except:
+        font = ImageFont.load_default()
     d.text((100, 300), "HISTOIRE\nVRAIE", font=font, fill="white")
     img.save("thumb.jpg")
 
