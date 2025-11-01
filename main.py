@@ -4,40 +4,29 @@ import edge_tts, asyncio
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from pathlib import Path
-import requests
+import requests, random
 
 API_KEY = os.getenv("YOUTUBE_API_KEY")
 youtube = build("youtube", "v3", developerKey=API_KEY)
 
+# SOURCE SAFE : Archive.org Creative Commons vidéos
 def search_cc():
-    from datetime import datetime, timedelta
-    date = (datetime.utcnow() - timedelta(days=7)).isoformat("T") + "Z"
-    url = (
-        "https://www.googleapis.com/youtube/v3/search"
-        "?q=story&part=snippet&type=video&videoLicense=creativeCommon"
-        "&order=viewCount&publishedAfter=" + date +
-        "&maxResults=10&key=" + API_KEY
-    )
-    headers = {"Referer": "https://github.com"}
-    r = requests.get(url, headers=headers)
-    if r.status_code != 200:
-        return None
-    res = r.json()
-    for v in res["items"]:
-        vid = v["id"]["videoId"]
-        stats = youtube.videos().list(part="statistics", id=vid).execute()["items"][0]["statistics"]
-        if int(stats.get("viewCount", 0)) > 50_000:
-            return vid
-    return None
+    # 50 films publics / CC récents sur Archive.org
+    base = "https://archive.org/advancedsearch.php"
+    params = {
+        "q": "creativecommons AND (crime OR story OR survival) AND mediatype:movies",
+        "fl": "identifier,title", "rows": 50, "output": "json"
+    }
+    r = requests.get(base, params=params, headers={"Referer": "https://github.com"})
+    if r.status_code != 200: return None
+    items = r.json().get("response", {}).get("docs", [])
+    if not items: return None
+    pick = random.choice(items)
+    return "https://archive.org/download/" + pick["identifier"] + "/" + pick["identifier"] + "_512kb.mp4"
 
-def dl(vid):
-    url = f"https://www.youtube.com/watch?v={vid}"
-    subprocess.run([
-        "yt-dlp",
-        "--quiet", "--no-warnings",
-        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-        "-f", "best[height<=720]", "-o", "cc.mp4", url
-    ], check=True)
+def dl(url):
+    # téléchargement direct (no bot-check)
+    subprocess.run(["wget", "-q", "-O", "cc.mp4", url], check=True)
 
 def transcribe():
     model = whisper.load_model("base")
@@ -49,10 +38,8 @@ def transcribe():
 def thumb():
     img = Image.new("RGB", (1280, 720), "black")
     d = ImageDraw.Draw(img)
-    try:
-        font = ImageFont.truetype("arial.ttf", 120)
-    except:
-        font = ImageFont.load_default()
+    try: font = ImageFont.truetype("arial.ttf", 120)
+    except: font = ImageFont.load_default()
     d.text((100, 300), "HISTOIRE\nVRAIE", font=font, fill="white")
     img.save("thumb.jpg")
 
@@ -62,13 +49,13 @@ async def tts():
 def edit():
     video = mp.VideoFileClip("cc.mp4").subclip(0, 58)
     audio = mp.AudioFileClip("voice.mp3")
-    mp.VideoFileClip("cc.mp4").subclip(0, 58).set_audio(audio).write_videofile("final.mp4", logger=None)
+    video.set_audio(audio).write_videofile("final.mp4", logger=None)
 
 def upload():
     body = {
         "snippet": {
             "title": "Histoire vraie en 60 s 🔥 #Shorts",
-            "description": "Résumé IA – lien original dans les commentaires.",
+            "description": "Résumé IA – vidéo libre de droits (Archive.org).",
             "tags": ["shorts", "histoire", "ia"],
             "categoryId": "24"
         },
@@ -79,11 +66,11 @@ def upload():
     youtube.thumbnails().set(videoId=r["id"], media_body=MediaFileUpload("thumb.jpg")).execute()
 
 def main():
-    vid = search_cc()
-    if not vid:
+    url = search_cc()
+    if not url:
         print("Aucune vidéo CC trouvée.")
         return
-    dl(vid)
+    dl(url)
     transcribe()
     asyncio.run(tts())
     edit()
