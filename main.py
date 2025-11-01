@@ -1,4 +1,4 @@
-import os, datetime, subprocess, whisper, moviepy.editor as mp
+import os, datetime, whisper, moviepy.editor as mp
 from PIL import Image, ImageDraw, ImageFont
 import edge_tts, asyncio
 from googleapiclient.discovery import build
@@ -6,29 +6,35 @@ from googleapiclient.http import MediaFileUpload
 from pathlib import Path
 import requests, random
 
-API_KEY = os.getenv("YOUTUBE_API_KEY")
-youtube = build("youtube", "v3", developerKey=API_KEY)
+API_KEY   = os.getenv("YOUTUBE_API_KEY")
+youtube   = build("youtube", "v3", developerKey=API_KEY)
 
 def search_cc():
     base = "https://archive.org/advancedsearch.php"
     params = {
         "q": "creativecommons AND (crime OR story OR survival) AND mediatype:movies",
-        "fl": "identifier,title", "rows": 50, "output": "json"
+        "fl": "identifier,title", "rows": 20, "output": "json"
     }
     r = requests.get(base, params=params, headers={"Referer": "https://github.com"})
     if r.status_code != 200: return None
     items = r.json().get("response", {}).get("docs", [])
     if not items: return None
-    pick = random.choice(items)
-    return "https://archive.org/download/" + pick["identifier"] + "/" + pick["identifier"] + "_512kb.mp4"
+    random.shuffle(items)
+    for pick in items:
+        id_ = pick["identifier"]
+        for ext in ["_512kb.mp4", ".mp4", ".m4v"]:
+            test_url = f"https://archive.org/download/{id_}/{id_}{ext}"
+            head = requests.head(test_url)
+            if head.status_code == 200:
+                return test_url
+    return None
 
 def dl(url):
-    r = requests.get(url.strip(), stream=True, headers={"Referer": "https://archive.org"})
+    r = requests.get(url, stream=True, headers={"Referer": "https://archive.org"})
     r.raise_for_status()
     with open("cc.mp4", "wb") as f:
-        for chunk in r.iter_content(chunk_size=1024 * 1024):
-            if chunk:
-                f.write(chunk)
+        for chunk in r.iter_content(chunk_size=1024*1024):
+            if chunk: f.write(chunk)
 
 def transcribe():
     model = whisper.load_model("base")
@@ -40,10 +46,8 @@ def transcribe():
 def thumb():
     img = Image.new("RGB", (1280, 720), "black")
     d = ImageDraw.Draw(img)
-    try:
-        font = ImageFont.truetype("arial.ttf", 120)
-    except:
-        font = ImageFont.load_default()
+    try: font = ImageFont.truetype("arial.ttf", 120)
+    except: font = ImageFont.load_default()
     d.text((100, 300), "HISTOIRE\nVRAIE", font=font, fill="white")
     img.save("thumb.jpg")
 
