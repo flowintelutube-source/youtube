@@ -12,8 +12,8 @@ youtube   = build("youtube", "v3", developerKey=API_KEY)
 def search_cc():
     base = "https://archive.org/advancedsearch.php"
     params = {
-        "q": "creativecommon AND mediatype:movies",
-        "fl": "identifier,title", "rows": 100, "output": "json"
+        "q": "mediatype:movies",          # tous les films
+        "fl": "identifier,title", "rows": 200, "output": "json"
     }
     r = requests.get(base, params=params, headers={"Referer": "https://github.com"})
     if r.status_code != 200: return None
@@ -24,11 +24,11 @@ def search_cc():
         id_ = pick["identifier"]
         for ext in ["_512kb.mp4", ".mp4", ".m4v"]:
             test_url = f"https://archive.org/download/{id_}/{id_}{ext}"
-            head = requests.head(test_url)
+            head = requests.head(test_url, timeout=10)
             if head.status_code == 200:
                 return test_url
     return None
-
+    
 def dl(url):
     r = requests.get(url, stream=True, headers={"Referer": "https://archive.org"})
     r.raise_for_status()
