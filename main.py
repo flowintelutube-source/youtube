@@ -28,7 +28,11 @@ PEXELS_KEY = os.getenv("PEXELS_API_KEY")
 YOUTUBE_KEY = os.getenv("YOUTUBE_API_KEY")
 if not PEXELS_KEY or not YOUTUBE_KEY:
     sys.exit("❗ Variables PEXELS_API_KEY et YOUTUBE_API_KEY requises.")
-
+    
+Check secrets
+        run: |
+          [ -z "${{ secrets.PEXELS_API_KEY }}" ] && { echo "❗ PEXELS_API_KEY manquant"; exit 1; }
+          [ -z "${{ secrets.YOUTUBE_API_KEY }}" ] && { echo "❗ YOUTUBE_API_KEY manquant"; exit 1; }
 WORKDIR   = Path.cwd().resolve()
 LOGFILE   = WORKDIR / f"auto_shorts_{dt.date.today():%Y%m}.log"
 TEMP_DIR  = WORKDIR / "temp"
