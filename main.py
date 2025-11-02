@@ -1,14 +1,66 @@
-import os, datetime, whisper, moviepy.editor as mp
-from PIL import Image, ImageDraw, ImageFont
-import edge_tts, asyncio
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-from pathlib import Path
-import requests, random
+import os
+import sys
+import logging
+from typing import Optional
 
-API_KEY   = os.getenv("YOUTUBE_API_KEY")
-PEXELS_KEY= os.getenv("PEXELS_API_KEY")
-youtube   = build("youtube", "v3", developerKey=API_KEY)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    datefmt="%H:%M:%S",
+)
+
+# ------------------------------------------------------------------
+# Environment validation
+# ------------------------------------------------------------------
+PEXELS_API_KEY: Optional[str] = os.getenv("PEXELS_API_KEY")
+if not PEXELS_API_KEY:
+    logging.error("❌ PEXELS_API_KEY environment variable is not set.")
+    sys.exit(1)
+
+logging.info("🔑 Pexels API key found (%s...)", PEXELS_API_KEY[:5])
+
+# ------------------------------------------------------------------
+# Core logic
+# ------------------------------------------------------------------
+def search_cc() -> str:
+    """
+    Fetch a Creative-Commons video URL from Pexels.
+    Replace this stub with actual Pexels API logic.
+    """
+    import requests
+
+    url = "https://api.pexels.com/videos/search"
+    headers = {"Authorization": PEXELS_API_KEY}
+    params = {
+        "query": "nature",
+        "orientation": "landscape",
+        "size": "medium",
+        "per_page": 1,
+    }
+
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=10)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        logging.error("❌ Pexels API request failed: %s", exc)
+        sys.exit(1)
+
+    data = resp.json()
+    try:
+        video_url = data["videos"][0]["video_files"][0]["link"]
+        logging.info("✅ Found CC video: %s", video_url)
+        return video_url
+    except (IndexError, KeyError):
+        logging.error("❌ No suitable Creative-Commons video found.")
+        sys.exit(1)
+
+# ------------------------------------------------------------------
+# Main entrypoint
+# ------------------------------------------------------------------
+def main() -> None:
+    url = search_cc()
+    logging.info("🎯 Selected video URL: %s", url)
 
 def search_cc():
     url = "https://api.pexels.com/videos/search"
