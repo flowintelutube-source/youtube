@@ -7,30 +7,26 @@ from pathlib import Path
 import requests, random
 
 API_KEY   = os.getenv("YOUTUBE_API_KEY")
+PEXELS_KEY= os.getenv("PEXELS_API_KEY")
 youtube   = build("youtube", "v3", developerKey=API_KEY)
 
 def search_cc():
-    base = "https://archive.org/advancedsearch.php"
-    params = {
-        "q": "mediatype:movies",          # tous les films
-        "fl": "identifier,title", "rows": 200, "output": "json"
-    }
-    r = requests.get(base, params=params, headers={"Referer": "https://github.com"})
+    url = "https://api.pexels.com/videos/search"
+    params = {"query": "story", "per_page": 20}
+    h = {"Authorization": PEXELS_KEY}
+    r = requests.get(url, headers=h, params=params)
     if r.status_code != 200: return None
-    items = r.json().get("response", {}).get("docs", [])
-    if not items: return None
-    random.shuffle(items)
-    for pick in items:
-        id_ = pick["identifier"]
-        for ext in ["_512kb.mp4", ".mp4", ".m4v"]:
-            test_url = f"https://archive.org/download/{id_}/{id_}{ext}"
-            head = requests.head(test_url, timeout=10)
-            if head.status_code == 200:
-                return test_url
+    videos = r.json().get("videos", [])
+    if not videos: return None
+    pick = random.choice(videos)
+    # prend le fichier HD
+    for f in pick["video_files"]:
+        if f["quality"] == "hd" and f["file_type"] == "video/mp4":
+            return f["link"]
     return None
-    
+
 def dl(url):
-    r = requests.get(url, stream=True, headers={"Referer": "https://archive.org"})
+    r = requests.get(url, stream=True)
     r.raise_for_status()
     with open("cc.mp4", "wb") as f:
         for chunk in r.iter_content(chunk_size=1024*1024):
@@ -63,7 +59,7 @@ def upload():
     body = {
         "snippet": {
             "title": "Histoire vraie en 60 s 🔥 #Shorts",
-            "description": "Résumé IA – vidéo libre de droits (Archive.org).",
+            "description": "Résumé IA – vidéo libre de droits (Pexels).",
             "tags": ["shorts", "histoire", "ia"],
             "categoryId": "24"
         },
@@ -76,7 +72,7 @@ def upload():
 def main():
     url = search_cc()
     if not url:
-        print("Aucune vidéo CC trouvée.")
+        print("Aucune vidéo Pexels trouvée.")
         return
     dl(url)
     transcribe()
