@@ -1,141 +1,209 @@
-import os
-import sys
-import logging
+#!/usr/bin/env python3
+"""
+auto_shorts.py
+Génère un Shorts YouTube à partir d’une vidéo Pexels (libre de droits).
+Dépendances :
+    pip install whisper openai-whisper edge-tts moviepy pillow google-api-python-client python-dotenv
+"""
+
+import os, sys, random, requests, asyncio, logging, datetime as dt
+from pathlib import Path
 from typing import Optional
 
-# Configure logging
+import whisper
+import moviepy.editor as mp
+from PIL import Image, ImageDraw, ImageFont
+import edge_tts
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+from googleapiclient.errors import HttpError
+
+# ---------- CONFIG ----------
+DOTENV = Path(__file__).with_suffix(".env")
+if DOTENV.exists():
+    import dotenv, dotenv.variables
+    dotenv.load_dotenv(DOTENV)
+
+PEXELS_KEY = os.getenv("PEXELS_API_KEY")
+YOUTUBE_KEY = os.getenv("YOUTUBE_API_KEY")
+if not PEXELS_KEY or not YOUTUBE_KEY:
+    sys.exit("❗ Variables PEXELS_API_KEY et YOUTUBE_API_KEY requises.")
+
+WORKDIR   = Path.cwd().resolve()
+LOGFILE   = WORKDIR / f"auto_shorts_{dt.date.today():%Y%m}.log"
+TEMP_DIR  = WORKDIR / "temp"
+for d in (TEMP_DIR,):
+    d.mkdir(exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s",
-    datefmt="%H:%M:%S",
+    handlers=[logging.FileHandler(LOGFILE, encoding="utf-8"), logging.StreamHandler()]
 )
+log = logging.getLogger("auto_shorts")
 
-# ------------------------------------------------------------------
-# Environment validation
-# ------------------------------------------------------------------
-PEXELS_API_KEY: Optional[str] = os.getenv("PEXELS_API_KEY")
-if not PEXELS_API_KEY:
-    logging.error("❌ PEXELS_API_KEY environment variable is not set.")
-    sys.exit(1)
+# ---------- UTILS ----------
+def safe_filename(stem: str) -> str:
+    return "".join(c if c.isalnum() or c in "._-" else "_" for c in stem)
 
-logging.info("🔑 Pexels API key found (%s...)", PEXELS_API_KEY[:5])
-
-# ------------------------------------------------------------------
-# Core logic
-# ------------------------------------------------------------------
-def search_cc() -> str:
-    """
-    Fetch a Creative-Commons video URL from Pexels.
-    Replace this stub with actual Pexels API logic.
-    """
-    import requests
-
-    url = "https://api.pexels.com/videos/search"
-    headers = {"Authorization": PEXELS_API_KEY}
-    params = {
-        "query": "nature",
-        "orientation": "landscape",
-        "size": "medium",
-        "per_page": 1,
-    }
-
+def download(url: str, dest: Path, chunk_mb: int = 2) -> bool:
     try:
-        resp = requests.get(url, headers=headers, params=params, timeout=10)
-        resp.raise_for_status()
-    except requests.RequestException as exc:
-        logging.error("❌ Pexels API request failed: %s", exc)
-        sys.exit(1)
+        with requests.get(url, stream=True, timeout=30) as r:
+            r.raise_for_status()
+            with open(dest, "wb") as f:
+                for chunk in r.iter_content(chunk_mb * 1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+        log.info("✅ Téléchargé : %s", dest.name)
+        return True
+    except Exception as exc:
+        log.error("❌ Échec téléchargement %s : %s", url, exc)
+        return False
 
-    data = resp.json()
-    try:
-        video_url = data["videos"][0]["video_files"][0]["link"]
-        logging.info("✅ Found CC video: %s", video_url)
-        return video_url
-    except (IndexError, KeyError):
-        logging.error("❌ No suitable Creative-Commons video found.")
-        sys.exit(1)
-
-# ------------------------------------------------------------------
-# Main entrypoint
-# ------------------------------------------------------------------
-def main() -> None:
-    url = search_cc()
-    logging.info("🎯 Selected video URL: %s", url)
-
-def search_cc():
+# ---------- PEXELS ----------
+def pick_pexels_video(query: str = "story") -> Optional[str]:
     url = "https://api.pexels.com/videos/search"
-    params = {"query": "story", "per_page": 20}
-    h = {"Authorization": PEXELS_KEY}
-    print("🔑 Clé Pexels reçue :", PEXELS_KEY[:5], "...")
-    r = requests.get(url, headers=h, params=params, timeout=10)
-    print("📡 Status Pexels :", r.status_code)
-    print("📄 Réponse brute :", r.text[:200])
-    if r.status_code != 200:
+    params = {"query": query, "per_page": 20, "orientation": "portrait"}
+    headers = {"Authorization": PEXELS_KEY}
+    try:
+        r = requests.get(url, headers=headers, params=params, timeout=15)
+        r.raise_for_status()
+    except Exception as exc:
+        log.error("❌ Pexels API : %s", exc)
         return None
+
     videos = r.json().get("videos", [])
     if not videos:
+        log.warning("⚠️ Aucune vidéo Pexels pour %s", query)
         return None
+
     pick = random.choice(videos)
     for f in pick["video_files"]:
-        if f["quality"] == "hd" and f["file_type"] == "video/mp4":
+        if f.get("quality") == "hd" and f.get("file_type") == "video/mp4":
             return f["link"]
     return None
 
-def dl(url):
-    r = requests.get(url, stream=True)
-    r.raise_for_status()
-    with open("cc.mp4", "wb") as f:
-        for chunk in r.iter_content(chunk_size=1024*1024):
-            if chunk: f.write(chunk)
-
-def transcribe():
+# ---------- WHISPER ----------
+def transcribe(video_path: Path) -> str:
     model = whisper.load_model("base")
-    result = model.transcribe("cc.mp4")
-    text = result["text"][:500]
-    Path("summary.txt").write_text(text, encoding="utf8")
+    result = model.transcribe(str(video_path))
+    text = result["text"].strip()[:500]
+    (TEMP_DIR / "summary.txt").write_text(text, encoding="utf-8")
+    log.info("🎤 Transcription : %s...", text[:60])
     return text
 
-def thumb():
+# ---------- TTS ----------
+async def generate_voice(text: str) -> bool:
+    communicate = edge_tts.Communicate(text, "fr-FR-DeniseNeural")
+    out = TEMP_DIR / "voice.mp3"
+    await communicate.save(str(out))
+    if out.stat().st_size == 0:
+        log.error("❌ TTS a généré un fichier vide")
+        return False
+    log.info("✅ Voix générée")
+    return True
+
+# ---------- MONTAGE ----------
+def build_final(target_duration: int = 58) -> Optional[Path]:
+    video_path = TEMP_DIR / "cc.mp4"
+    voice_path = TEMP_DIR / "voice.mp3"
+    final_path = TEMP_DIR / "final.mp4"
+
+    if not video_path.exists() or not voice_path.exists():
+        log.error("❌ Fichiers sources manquants")
+        return None
+
+    try:
+        video = mp.VideoFileClip(str(video_path))
+        audio = mp.AudioFileClip(str(voice_path))
+
+        # Coupe la vidéo si trop longue
+        if video.duration > target_duration:
+            video = video.subclip(0, target_duration)
+
+        # Ajuste l’audio si besoin
+        if audio.duration > target_duration:
+            audio = audio.subclip(0, target_duration)
+
+        final = video.set_audio(audio)
+        final.write_videofile(str(final_path), logger=None, codec="libx264", audio_codec="aac")
+        video.close(); audio.close(); final.close()
+        log.info("✅ Montage finalisé")
+        return final_path
+    except Exception as exc:
+        log.error("❌ Erreur montage : %s", exc)
+        return None
+
+# ---------- THUMBNAIL ----------
+def make_thumb() -> Path:
+    thumb_path = TEMP_DIR / "thumb.jpg"
     img = Image.new("RGB", (1280, 720), "black")
-    d = ImageDraw.Draw(img)
-    try: font = ImageFont.truetype("arial.ttf", 120)
-    except: font = ImageFont.load_default()
-    d.text((100, 300), "HISTOIRE\nVRAIE", font=font, fill="white")
-    img.save("thumb.jpg")
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.truetype("arial.ttf", 120)
+    except OSError:
+        font = ImageFont.load_default()
+    draw.text((100, 300), "HISTOIRE\nVRAIE", font=font, fill="white")
+    img.save(thumb_path, quality=95)
+    log.info("✅ Miniature créée")
+    return thumb_path
 
-async def tts():
-    await edge_tts.Communicate(Path("summary.txt").read_text(), "fr-FR-DeniseNeural").save("voice.mp3")
-
-def edit():
-    video = mp.VideoFileClip("cc.mp4").subclip(0, 58)
-    audio = mp.AudioFileClip("voice.mp3")
-    video.set_audio(audio).write_videofile("final.mp4", logger=None)
-
-def upload():
+# ---------- UPLOAD ----------
+def upload_to_youtube(video_path: Path, thumb_path: Path) -> bool:
+    youtube = build("youtube", "v3", developerKey=YOUTUBE_KEY, cache_discovery=False)
     body = {
         "snippet": {
             "title": "Histoire vraie en 60 s 🔥 #Shorts",
             "description": "Résumé IA – vidéo libre de droits (Pexels).",
             "tags": ["shorts", "histoire", "ia"],
-            "categoryId": "24"
+            "categoryId": "24",
         },
-        "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}
+        "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False},
     }
-    media = MediaFileUpload("final.mp4", chunksize=-1, resumable=True)
-    r = youtube.videos().insert(part="snippet,status", body=body, media_body=media).execute()
-    youtube.thumbnails().set(videoId=r["id"], media_body=MediaFileUpload("thumb.jpg")).execute()
+    try:
+        media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
+        response = youtube.videos().insert(part="snippet,status", body=body, media_body=media).execute()
+        youtube.thumbnails().set(videoId=response["id"], media_body=MediaFileUpload(thumb_path)).execute()
+        log.info("✅ Upload OK – ID : %s", response["id"])
+        return True
+    except HttpError as e:
+        log.error("❌ Upload YouTube : %s", e.content.decode())
+        return False
 
-def main():
-    url = search_cc()
+# ---------- PIPELINE ----------
+def main() -> None:
+    log.info("========== Début pipeline ==========")
+
+    # 1. Vidéo
+    url = pick_pexels_video()
     if not url:
-        print("Aucune vidéo Pexels trouvée.")
+        log.error("❌ Impossible de récupérer une vidéo Pexels")
         return
-    dl(url)
-    transcribe()
-    asyncio.run(tts())
-    edit()
-    thumb()
-    upload()
+    video_file = TEMP_DIR / "cc.mp4"
+    if not download(url, video_file):
+        return
+
+    # 2. Transcription
+    text = transcribe(video_file)
+
+    # 3. Voix
+    if not asyncio.run(generate_voice(text)):
+        return
+
+    # 4. Montage
+    final_video = build_final()
+    if not final_video:
+        return
+
+    # 5. Miniature
+    thumb = make_thumb()
+
+    # 6. Upload
+    upload_to_youtube(final_video, thumb)
+    log.info("========== Pipeline terminé ==========")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        log.warning("Interrompu par l’utilisateur")
