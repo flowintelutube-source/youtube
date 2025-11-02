@@ -29,17 +29,19 @@ YOUTUBE_KEY = os.getenv("YOUTUBE_API_KEY")
 if not PEXELS_KEY or not YOUTUBE_KEY:
     sys.exit("❗ Variables PEXELS_API_KEY et YOUTUBE_API_KEY requises.")
     
-      - name: Check secrets
-        run: |
-          [ -z "${{ secrets.PEXELS_API_KEY }}" ] && { echo "❗ PEXELS_API_KEY manquant"; exit 1; }
-          [ -z "${{ secrets.YOUTUBE_API_KEY }}" ] && { echo "❗ YOUTUBE_API_KEY manquant"; exit 1; }
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s",
-    handlers=[logging.FileHandler(LOGFILE, encoding="utf-8"), logging.StreamHandler()]
-)
-log = logging.getLogger("auto_shorts")
+# ---------- CONFIG ----------
+DOTENV = Path(__file__).with_suffix(".env")
+if DOTENV.exists():
+    import dotenv
+    dotenv.load_dotenv(DOTENV)
 
+PEXELS_KEY  = os.getenv("PEXELS_API_KEY")
+YOUTUBE_KEY = os.getenv("YOUTUBE_API_KEY")
+
+# Vérification rapide
+if not PEXELS_KEY or not YOUTUBE_KEY:
+    print("❗ Variables PEXELS_API_KEY et YOUTUBE_API_KEY requises.")
+    sys.exit(1)
 # ---------- UTILS ----------
 def safe_filename(stem: str) -> str:
     return "".join(c if c.isalnum() or c in "._-" else "_" for c in stem)
