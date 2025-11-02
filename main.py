@@ -12,8 +12,8 @@ youtube   = build("youtube", "v3", developerKey=API_KEY)
 def search_cc():
     base = "https://archive.org/advancedsearch.php"
     params = {
-        "q": "creativecommons AND (crime OR story OR survival) AND mediatype:movies",
-        "fl": "identifier,title", "rows": 20, "output": "json"
+        "q": "creativecommon AND mediatype:movies",
+        "fl": "identifier,title", "rows": 100, "output": "json"
     }
     r = requests.get(base, params=params, headers={"Referer": "https://github.com"})
     if r.status_code != 200: return None
