@@ -14,12 +14,16 @@ def search_cc():
     url = "https://api.pexels.com/videos/search"
     params = {"query": "story", "per_page": 20}
     h = {"Authorization": PEXELS_KEY}
-    r = requests.get(url, headers=h, params=params)
-    if r.status_code != 200: return None
+    print("🔑 Clé Pexels reçue :", PEXELS_KEY[:5], "...")
+    r = requests.get(url, headers=h, params=params, timeout=10)
+    print("📡 Status Pexels :", r.status_code)
+    print("📄 Réponse brute :", r.text[:200])
+    if r.status_code != 200:
+        return None
     videos = r.json().get("videos", [])
-    if not videos: return None
+    if not videos:
+        return None
     pick = random.choice(videos)
-    # prend le fichier HD
     for f in pick["video_files"]:
         if f["quality"] == "hd" and f["file_type"] == "video/mp4":
             return f["link"]
